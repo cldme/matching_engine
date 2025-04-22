@@ -1,73 +1,43 @@
 #pragma once
 #include <string>
 #include <vector>
-#include <cstdint>
 #include <optional>
 #include <absl/container/flat_hash_map.h>
+#include "order.h"
+#include "level.h"
 
-enum class Side { Buy, Sell };
-
-using Id = uint64_t;
-using Price = double;
-using Volume = uint64_t;
-using LevelIndex = size_t;
-using Active = bool;
-
-struct Order
-{
-    Id mId;
-    Side mSide;
-    Price mPrice;
-    Volume mVolume;
-    Active mIsActive;
-    LevelIndex mLevelIndex;
-
-    Order(Id id = 0, Side side = Side::Buy, Price price = 0.0, Volume volume = 0, Active isActive = true, LevelIndex levelIndex = 0) : 
-        mId(id),
-        mSide(side),
-        mPrice(price),
-        mVolume(volume),
-        mIsActive(isActive),
-        mLevelIndex(levelIndex)
-    {}
-};
-
-struct Level
-{
-    std::vector<Order> mOrders;
-    size_t mStart = 0;
-
-    template <typename... Args>
-    void emplace_back(Args&&... args)
-    {
-        mOrders.emplace_back(std::forward<Args>(args)...);
-    }
-
-    void pop_front()
-    {
-        mStart++;
-        if (mStart > 1024 && mStart > mOrders.size() / 2)
-        {
-            mOrders.erase(mOrders.begin(), mOrders.begin() + mStart);
-            mStart = 0;
-        }
-    }
-
-    Order& front()
-    {
-        return mOrders[mStart];
-    }
-
-    bool empty() const
-    {
-        return mStart >= mOrders.size();
-    }
-
-    size_t size() const
-    {
-        return mOrders.size() - mStart;
-    }
-};
+/**
+ * Operations supported by the order book
+ * -> ADD
+ *  --> AddOrder(id, side, price, volume)
+ * -> MODIFY
+ *  --> ModifyOrder(id, volume)
+ * -> DELETE
+ *  --> DeleteOrder(id)
+ * 
+ * Data structures used for the order book
+ * -> one vector to keep track of price levels for bid side
+ * -> one vector to keep track of price levels for ask side
+ * -> one flat_hash_map to keep track of order ids to orders
+ *    needed for order modify/delete
+ * 
+ * Notes
+ * -> we use vectors to optimize for cache locality
+ * -> bid side vector is sorted in ascending order
+ * -> ask side vector is sorted in descending order
+ * -> most order book operations will happen around the TOP of the book
+ * -> we keep the TOP of the book for both sides at the end of the vectors
+ *    this way we avoid extra shifting when removing TOP levels
+ * 
+ * Complexity
+ * -> ADD
+ *  --> log(N) if price level already exists
+ *  --> log(N) + N if new price level is added
+ * -> MODIFY
+ *  --> log(N) to find the price level (binary search)
+ * -> DELETE
+ *  --> log(N) to find the price level (binary search)
+ */
 
 class OrderBook
 {
@@ -77,6 +47,7 @@ public:
     bool ModifyOrder(const Id orderId, const Volume);
     bool DeleteOrder(const Id orderId);
     const Order* FindOrder(const Id);
+    void SetOnTradeCallback(OnTradeCallback);
 
     std::optional<double> GetBestBid() const;
     std::optional<double> GetBestAsk() const;
@@ -84,10 +55,71 @@ public:
 private:
     void MatchOrders();
 
-    absl::flat_hash_map<Id, Order> mOrders;
-    absl::flat_hash_map<Price, Level> mBidLevels;
-    absl::flat_hash_map<Price, Level> mAskLevels;
-};
+    template<class T, class Compare>
+    size_t AddOrder(T& levels, const Id id, const Side side, const Price price, const Volume volume, Compare compare)
+    {
+        auto it = std::lower_bound(levels.begin(), levels.end(), price, [compare](const auto& level, Price price)
+        {
+            return compare(level.first, price);
+        });
+        size_t levelIndex = 0;
+        if (it != levels.end() && it->first == price)
+        {
+            auto& level = it->second;
+            levelIndex = level.GetEnd();
+            level.EmplaceBack(Order{ id, side, price, volume, levelIndex });
+        }
+        else
+        {
+            Level newLevel;
+            newLevel.EmplaceBack(Order{ id, side, price, volume });
+            levels.insert(it, { price, std::move(newLevel) });
+        }
+        return levelIndex;
+    }
 
-std::ostream& operator<<(std::ostream& os, const Side& side);
-std::ostream& operator<<(std::ostream& os, const Order& order);
+    template<class T, class Compare>
+    bool ModifyOrder(T& levels, const Order& order, const Volume newVolume, Compare compare)
+    {
+        auto it = std::lower_bound(levels.begin(), levels.end(), order.mPrice, [compare](const auto& level, Price price)
+        {
+            return compare(level.first, price);
+        });
+        if (it != levels.end() && it->first == order.mPrice)
+        {
+            auto& level = it->second;
+            level.ModifyOrder(order, newVolume);
+        }
+        else
+        {
+            std::cout << "Could not find existing order on price level while calling ModifyOrder for order=" << order << std::endl;
+            return false;
+        }
+        return true;
+    }
+
+    template<class T, class Compare>
+    bool DeleteOrder(T& levels, const Order& order, Compare compare)
+    {
+        auto it = std::lower_bound(levels.begin(), levels.end(), order.mPrice, [compare](const auto& level, Price price)
+        {
+            return compare(level.first, price);
+        });
+        if (it != levels.end() && it->first == order.mPrice)
+        {
+            auto& level = it->second;
+            level.DeleteOrder(order);
+        }
+        else
+        {
+            std::cout << "Could not find existing order on price level while calling DeleteOrder for order=" << order << std::endl;
+            return false;
+        }
+        return true;
+    }
+
+    OnTradeCallback mOnTradeCallback;
+    absl::flat_hash_map<Id, Order> mOrders;
+    std::vector<std::pair<Price, Level>> mBidLevels;
+    std::vector<std::pair<Price, Level>> mAskLevels;
+};
