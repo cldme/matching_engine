@@ -53,8 +53,7 @@ TEST_F(OrderBookTest, ModifyOrder)
     EXPECT_EQ(order->mVolume, 14);
     EXPECT_EQ(order->mIsActive, true);
     auto* delOrder = mOrderBook.FindOrder(0 /*=id*/);
-    EXPECT_TRUE(delOrder != nullptr);
-    EXPECT_EQ(delOrder->mIsActive, false);
+    EXPECT_TRUE(delOrder == nullptr);
 }
 
 TEST_F(OrderBookTest, DeleteOrder)
@@ -86,6 +85,22 @@ TEST_F(OrderBookTest, ModifyAfterDelete)
     EXPECT_FALSE(mOrderBook.ModifyOrder(0 /*=id*/, 10 /*=price*/, 100 /*=volume*/));
 }
 
+TEST_F(OrderBookTest, MatchAfterModifyWithEmptyLevel)
+{
+    Order bid1 = Order(1 /*=id*/, Side::Bid, 50 /*=price*/, 5 /*=volume*/);
+    Order ask1 = Order(2 /*=id*/, Side::Ask, 50 /*=price*/, 5 /*=volume*/);
+    EXPECT_TRUE(mOrderBook.AddOrder(Side::Bid, 100 /*=price*/, 10 /*=volume*/));
+    EXPECT_TRUE(mOrderBook.ModifyOrder(0 /*=id*/, 50 /*=price*/, 5 /*=volume*/));
+
+    // setup expected matches in correct order
+    mBidMatches.emplace(bid1);
+    mAskMatches.emplace(ask1);
+    mVolumeMatches.emplace(5);
+    EXPECT_TRUE(mOrderBook.AddOrder(Side::Ask, 50 /*=price*/, 5 /*=volume*/));
+    EXPECT_TRUE(mBidMatches.empty());
+    EXPECT_TRUE(mAskMatches.empty());
+}
+
 TEST_F(OrderBookTest, MatchOrders)
 {
     Order bid1 = Order(0 /*=id*/, Side::Bid, 10.7 /*=price*/, 5 /*=volume*/);
@@ -104,9 +119,11 @@ TEST_F(OrderBookTest, MatchOrders)
     EXPECT_TRUE(mOrderBook.AddOrder(bid1.mSide, bid1.mPrice, bid1.mVolume));
     EXPECT_TRUE(mOrderBook.AddOrder(bid2.mSide, bid2.mPrice, bid2.mVolume));
     EXPECT_TRUE(mOrderBook.AddOrder(ask1.mSide, ask1.mPrice, ask1.mVolume));
+    EXPECT_TRUE(mBidMatches.empty());
+    EXPECT_TRUE(mAskMatches.empty());
 }
 
-TEST_F(OrderBookTest, MatchOrdersAfterModifies)
+TEST_F(OrderBookTest, MatchOrdersAfterMultipleModifies)
 {
     // ASK 10@96
     Order ask1 = Order(0 /*=id*/, Side::Ask, 96 /*=price*/, 10 /*=volume*/);
@@ -179,4 +196,6 @@ TEST_F(OrderBookTest, MatchOrdersAfterModifies)
     EXPECT_TRUE(mOrderBook.AddOrder(bid9.mSide, bid9.mPrice, bid9.mVolume));
 
     EXPECT_TRUE(mOrderBook.AddOrder(ask4.mSide, ask4.mPrice, ask4.mVolume));
+    EXPECT_TRUE(mBidMatches.empty());
+    EXPECT_TRUE(mAskMatches.empty());
 }

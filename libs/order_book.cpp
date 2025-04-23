@@ -5,6 +5,8 @@
 OrderBook::OrderBook()
 {
     mOrders.reserve(1000);
+    mBidLevels.reserve(1000);
+    mAskLevels.reserve(1000);
     mOnTradeCallback = nullptr;
 }
 
@@ -56,6 +58,7 @@ bool OrderBook::DeleteOrder(const Id orderId)
     auto compare = order.mSide == Side::Bid ? BidComparator : AskComparator;
     bool deleted = DeleteOrder(sideLevels, order, compare);
     order.mIsActive = false;
+    mOrders.erase(it);
 
     std::cout << "[" << (deleted ? "UPDATE]" : "ERROR]") << " Deleted order=" << order << std::endl;
     return true;
@@ -124,7 +127,8 @@ void OrderBook::MatchOrders()
 
         if (bidLevel.Empty() || askLevel.Empty())
         {
-            break;
+            bidLevel.Empty() ? mBidLevels.pop_back() : mAskLevels.pop_back();
+            continue;
         }
 
         auto& bidOrder = bidLevel.Front();
