@@ -1,0 +1,6 @@
+[submodule "external/CLI11"]
+	path = external/CLI11
+	url = https://github.com/CLIUtils/CLI11.git
+[submodule "external/replxx"]
+	path = external/replxx
+	url = https://github.com/AmokHuginnsson/replxx.git

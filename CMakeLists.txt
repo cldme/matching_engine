@@ -12,5 +12,8 @@ find_package(GTest REQUIRED)
 enable_testing()
 
 # add project subdirectories
+add_subdirectory(external/CLI11)
+add_subdirectory(external/replxx)
 add_subdirectory(libs)
+add_subdirectory(src)
 add_subdirectory(tests)

@@ -34,8 +34,8 @@ std::ostream& operator<<(std::ostream& os, const Order& order)
     return os 
         << "(id=" << order.mId 
         << " side=" << order.mSide 
-        << " price=" << order.mPrice 
         << " volume=" << order.mVolume 
+        << " price=" << order.mPrice 
         << " levelIndex=" << order.mLevelIndex
         << " isActive=" << order.mIsActive
         << ")";

@@ -11,7 +11,7 @@
  * -> ADD
  *  --> AddOrder(id, side, price, volume)
  * -> MODIFY
- *  --> ModifyOrder(id, volume)
+ *  --> ModifyOrder(id, price, volume)
  * -> DELETE
  *  --> DeleteOrder(id)
  * 
@@ -34,7 +34,7 @@
  *  --> log(N) if price level already exists
  *  --> log(N) + N if new price level is added
  * -> MODIFY
- *  --> log(N) to find the price level (binary search)
+ *  --> log(N) to delete and add new order
  * -> DELETE
  *  --> log(N) to find the price level (binary search)
  */
@@ -43,8 +43,8 @@ class OrderBook
 {
 public:
     OrderBook();
-    bool AddOrder(const Id, const Side, const Price, const Volume);
-    bool ModifyOrder(const Id orderId, const Volume);
+    std::optional<Id> AddOrder(const Side, const Price, const Volume);
+    bool ModifyOrder(const Id orderId, const Price, const Volume);
     bool DeleteOrder(const Id orderId);
     const Order* FindOrder(const Id);
     void SetOnTradeCallback(OnTradeCallback);
@@ -79,26 +79,6 @@ private:
     }
 
     template<class T, class Compare>
-    bool ModifyOrder(T& levels, const Order& order, const Volume newVolume, Compare compare)
-    {
-        auto it = std::lower_bound(levels.begin(), levels.end(), order.mPrice, [compare](const auto& level, Price price)
-        {
-            return compare(level.first, price);
-        });
-        if (it != levels.end() && it->first == order.mPrice)
-        {
-            auto& level = it->second;
-            level.ModifyOrder(order, newVolume);
-        }
-        else
-        {
-            std::cout << "Could not find existing order on price level while calling ModifyOrder for order=" << order << std::endl;
-            return false;
-        }
-        return true;
-    }
-
-    template<class T, class Compare>
     bool DeleteOrder(T& levels, const Order& order, Compare compare)
     {
         auto it = std::lower_bound(levels.begin(), levels.end(), order.mPrice, [compare](const auto& level, Price price)
@@ -118,6 +98,7 @@ private:
         return true;
     }
 
+    Id mId = 0;
     OnTradeCallback mOnTradeCallback;
     absl::flat_hash_map<Id, Order> mOrders;
     std::vector<std::pair<Price, Level>> mBidLevels;
